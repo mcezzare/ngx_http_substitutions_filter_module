@@ -11,9 +11,6 @@
 #include <ngx_http.h>
 #include <nginx.h>
 
-//Try log another file
-#include <stdio.h>
-#include <stdlib.h>
 
 #if (NGX_DEBUG)
 #define SUBS_DEBUG 1
@@ -28,6 +25,15 @@
 
 
 #define ngx_buffer_init(b) b->pos = b->last = b->start;
+
+//try log external file
+#define SUBS_LOGFILE	"/var/log/nginx/subs.log"
+ 
+extern int LogCreated;      
+ 
+static void Log (char *message);    
+int LogCreated = 0;
+
 
 
 typedef struct {
@@ -92,6 +98,7 @@ typedef struct {
 
 } ngx_http_subs_ctx_t;
 
+
 static ngx_int_t ngx_http_subs_header_filter(ngx_http_request_t *r);
 static ngx_int_t ngx_http_subs_init_context(ngx_http_request_t *r);
 
@@ -134,9 +141,6 @@ static ngx_int_t ngx_http_subs_filter_init(ngx_conf_t *cf);
 static ngx_int_t ngx_http_subs_regex_capture_count(ngx_regex_t *re);
 #endif
 
-//try write
-static void write_extra_log(ngx_str_t *message);
-//end try
 
 static ngx_command_t  ngx_http_subs_filter_commands[] = {
 
@@ -339,7 +343,7 @@ ngx_http_subs_init_context(ngx_http_request_t *r)
 static ngx_int_t
 ngx_http_subs_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
-    ngx_int_t                  rc;
+    ngx_int_t    	           rc;
     ngx_log_t                 *log;
     ngx_chain_t               *cl, *temp;
     ngx_http_subs_ctx_t       *ctx;
@@ -359,7 +363,6 @@ ngx_http_subs_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0,
                    "http subs filter \"%V\"", &r->uri);
-    write_extra_log(&r->uri);
 
     if (in == NULL && ctx->busy == NULL) {
         return ngx_http_next_body_filter(r, in);
@@ -711,7 +714,7 @@ ngx_http_subs_match(ngx_http_request_t *r, ngx_http_subs_ctx_t *ctx)
     ngx_buffer_init(ctx->line_dst);
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, log, 0, "match counts: %i", match_count);
-
+    Log("--> SUBS DONE\n");
     return match_count;
 
 failed:
@@ -1338,7 +1341,8 @@ ngx_http_subs_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 
 static ngx_int_t
 ngx_http_subs_filter_init(ngx_conf_t *cf)
-{
+{   
+    //Log("Creating Log Substitutions\n");
     ngx_http_next_header_filter = ngx_http_top_header_filter;
     ngx_http_top_header_filter = ngx_http_subs_header_filter;
 
@@ -1348,11 +1352,29 @@ ngx_http_subs_filter_init(ngx_conf_t *cf)
     return NGX_OK;
 }
 
-static void write_extra_log(ngx_str_t *message){
-    FILE *fp;
-    fp = fopen ("/var/log/nginx/subs.log", "w+");
-    fprintf(stdout,"%p\n",message);
-    fprintf(fp,"%p\n",message);
-    fclose(fp);
-//    return(0);
+ 
+static void Log (char *message)
+{
+	FILE *file;
+ 
+	if (!LogCreated) {
+		file = fopen(SUBS_LOGFILE, "w");
+		LogCreated = 1;
+	}
+	else		
+		file = fopen(SUBS_LOGFILE, "a");
+		
+	if (file == NULL) {
+		if (LogCreated)
+			LogCreated = 0;
+		return;
+	}
+	else
+	{
+		fputs(message, file);
+		fclose(file);
+	}
+ 
+	if (file)
+		fclose(file);
 }
